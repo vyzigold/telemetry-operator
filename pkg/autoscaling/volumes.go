@@ -51,6 +51,11 @@ func getVolumes() []corev1.Volume {
 					SecretName:  configVolume,
 				},
 			},
+		}, {
+			Name: "run",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
 		},
 	}
 }
@@ -63,15 +68,55 @@ func getVolumeMounts(serviceName string) []corev1.VolumeMount {
 			MountPath: "/var/lib/openstack/bin",
 			ReadOnly:  true,
 		},
+		// We're not using kolla to copy files around. So we
+		// need to specify the correct MountPath, SubPath
+		// for each file.
 		{
 			Name:      "config-data",
-			MountPath: "/var/lib/openstack/config",
+			MountPath: "/etc/aodh/aodh.conf",
+			SubPath:   "aodh.conf",
 			ReadOnly:  true,
 		},
 		{
 			Name:      "config-data",
-			MountPath: "/var/lib/kolla/config_files/config.json",
-			SubPath:   serviceName + "-config.json",
+			MountPath: "/etc/aodh/aodh.conf.d/01-aodh-custom.conf",
+			SubPath:   "custom.conf",
+			ReadOnly:  true,
+		},
+		{
+			Name:      "config-data",
+			MountPath: "/etc/httpd/conf.d/00wsgi-aodh.conf",
+			SubPath:   "wsgi-aodh.conf",
+			ReadOnly:  true,
+		},
+		{
+			Name:      "config-data",
+			MountPath: "/etc/httpd/conf/httpd.conf",
+			SubPath:   "httpd.conf",
+			ReadOnly:  true,
+		},
+		{
+			Name:      "config-data",
+			MountPath: "/etc/httpd/conf.d/ssl.conf",
+			SubPath:   "ssl.conf",
+			ReadOnly:  true,
+		},
+		{
+			Name:      "config-data",
+			MountPath: "/etc/openstack/prometheus.yaml",
+			SubPath:   "prometheus.yaml",
+			ReadOnly:  true,
+		},
+		// Seems like httpd needs an accessible directory to store
+		// its pid file(s). This seems like a working solution
+		{
+			Name:      "run",
+			MountPath: "/etc/httpd/run",
+		},
+		{
+			Name:      "config-data",
+			MountPath: "/etc/my.cnf",
+			SubPath:   "my.cnf",
 			ReadOnly:  true,
 		},
 	}

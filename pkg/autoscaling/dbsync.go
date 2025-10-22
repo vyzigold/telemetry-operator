@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	dbSyncCommand = "/usr/local/bin/kolla_start"
+	dbSyncCommand = "/usr/bin/aodh-dbsync"
 )
 
 // DbSyncJob func
@@ -43,7 +43,6 @@ func DbSyncJob(instance *autoscalingv1beta1.Autoscaling, labels map[string]strin
 		volumeMounts = append(volumeMounts, instance.Spec.Aodh.TLS.CreateVolumeMounts(nil)...)
 	}
 
-	runAsUser := int64(AodhUserID)
 	envVars := map[string]env.Setter{}
 	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
 	envVars["KOLLA_BOOTSTRAP"] = env.SetValue("TRUE")
@@ -81,14 +80,24 @@ func DbSyncJob(instance *autoscalingv1beta1.Autoscaling, labels map[string]strin
 							Args:  args,
 							Image: instance.Spec.Aodh.APIImage,
 							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:    &runAsUser,
-								RunAsNonRoot: ptr.To(true),
+								AllowPrivilegeEscalation: ptr.To(false),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{
+										"ALL",
+									},
+								},
 							},
 							Env:          env.MergeEnvs(aodhPassword, envVars),
 							VolumeMounts: volumeMounts,
 						},
 					},
 					Volumes: volumes,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
 				},
 			},
 		},

@@ -19,6 +19,7 @@ package autoscaling
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/openstack-k8s-operators/lib-common/modules/common/annotations"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
@@ -37,11 +38,6 @@ import (
 	telemetryv1 "github.com/openstack-k8s-operators/telemetry-operator/api/v1beta1"
 )
 
-const (
-	// ServiceCommand -
-	ServiceCommand = "/usr/local/bin/kolla_start"
-)
-
 // AodhStatefulSet func
 func AodhStatefulSet(
 	instance *telemetryv1.Autoscaling,
@@ -50,8 +46,6 @@ func AodhStatefulSet(
 	topology *topologyv1.Topology,
 	memcached *memcachedv1.Memcached,
 ) (*appsv1.StatefulSet, error) {
-	aodhUser := int64(AodhUserID)
-
 	livenessProbe := &corev1.Probe{
 		// TODO might need tuning
 		TimeoutSeconds:      30,
@@ -66,7 +60,12 @@ func AodhStatefulSet(
 	}
 
 	args := []string{"-c"}
-	args = append(args, ServiceCommand)
+	// Adjust the args to execute the start command directly
+	// instead of running kolla_start
+	argsApi := append(args, "/usr/sbin/httpd -DFOREGROUND -E /dev/stdout")
+	argsEvaluator := append(args, "/usr/bin/aodh-evaluator --logfile /dev/stdout")
+	argsListener := append(args, "/usr/bin/aodh-listener --logfile /dev/stdout")
+	argsNotifier := append(args, "/usr/bin/aodh-notifier --logfile /dev/stdout")
 
 	livenessProbe.HTTPGet = &corev1.HTTPGetAction{
 		Path: "/",
@@ -107,6 +106,7 @@ func AodhStatefulSet(
 	// add MTLS cert if defined
 	if memcached.GetMemcachedMTLSSecret() != "" {
 		volumes = append(volumes, memcached.CreateMTLSVolume())
+		// NOTE: This would need the same as below
 		apiVolumeMounts = append(apiVolumeMounts, memcached.CreateMTLSVolumeMounts(nil, nil)...)
 	}
 
@@ -125,7 +125,15 @@ func AodhStatefulSet(
 				return nil, err
 			}
 			volumes = append(volumes, svc.CreateVolume(endpt.String()))
-			apiVolumeMounts = append(apiVolumeMounts, svc.CreateVolumeMounts(endpt.String())...)
+			// Modify the MountPath of TLS related files to mount
+			// them to their final location instead of relying
+			// on kolla
+			certs := svc.CreateVolumeMounts(endpt.String())
+			for _, cert := range certs {
+				// NOTE: This could be done in libcommon
+				cert.MountPath = strings.Replace(cert.MountPath, "/var/lib/config-data/tls/", "/etc/pki/tls/", 1)
+				apiVolumeMounts = append(apiVolumeMounts, cert)
+			}
 		}
 	}
 
@@ -140,11 +148,22 @@ func AodhStatefulSet(
 		Command: []string{
 			"/bin/bash",
 		},
-		Args:         args,
+		Args:         argsApi,
 		Image:        instance.Spec.Aodh.APIImage,
 		Name:         "aodh-api",
 		Env:          env.MergeEnvs([]corev1.EnvVar{}, envVarsAodh),
 		VolumeMounts: apiVolumeMounts,
+		// Not using kolla alows us to disallow privilege escalation
+		// and drop all capabilities (there may be reasons why
+		// this wouldn't be possible for some other services)
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"ALL",
+				},
+			},
+		},
 	}
 
 	evaluatorContainer := corev1.Container{
@@ -152,11 +171,19 @@ func AodhStatefulSet(
 		Command: []string{
 			"/bin/bash",
 		},
-		Args:         args,
+		Args:         argsEvaluator,
 		Image:        instance.Spec.Aodh.EvaluatorImage,
 		Name:         "aodh-evaluator",
 		Env:          env.MergeEnvs([]corev1.EnvVar{}, envVarsAodh),
 		VolumeMounts: evaluatorVolumeMounts,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"ALL",
+				},
+			},
+		},
 	}
 
 	notifierContainer := corev1.Container{
@@ -164,11 +191,19 @@ func AodhStatefulSet(
 		Command: []string{
 			"/bin/bash",
 		},
-		Args:         args,
+		Args:         argsNotifier,
 		Image:        instance.Spec.Aodh.NotifierImage,
 		Name:         "aodh-notifier",
 		Env:          env.MergeEnvs([]corev1.EnvVar{}, envVarsAodh),
 		VolumeMounts: notifierVolumeMounts,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"ALL",
+				},
+			},
+		},
 	}
 
 	listenerContainer := corev1.Container{
@@ -176,11 +211,19 @@ func AodhStatefulSet(
 		Command: []string{
 			"/bin/bash",
 		},
-		Args:         args,
+		Args:         argsListener,
 		Image:        instance.Spec.Aodh.ListenerImage,
 		Name:         "aodh-listener",
 		Env:          env.MergeEnvs([]corev1.EnvVar{}, envVarsAodh),
 		VolumeMounts: listenerVolumeMounts,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{
+					"ALL",
+				},
+			},
+		},
 	}
 
 	pod := corev1.PodTemplateSpec{
@@ -197,9 +240,33 @@ func AodhStatefulSet(
 				notifierContainer,
 				listenerContainer,
 			},
+			// I don't think there is a need to run anything with
+			// Aodh's UUID. Removing the RunAsUser, but having
+			// RunAsNonRoot set to true will allow
+			// OCP to decide what UUID to use in order to comply
+			// with security constraints (there is an interval
+			// in which some constraints require the UUID to be).
+
+			// In this configuration OCP will also fill in
+			// FSGroup with the same ID. So each mounted volume
+			// will be owned by the same group as is being used
+			// to run Aodh. Permissions on the volumes will be
+			// OR'd with 0660 unless the volume is read only, in
+			// which case they seem to be OR'd with 0440. This
+			// means we don't need kolla to set the ownership
+			// and permissions of files.
 			SecurityContext: &corev1.PodSecurityContext{
-				RunAsUser:    &aodhUser,
-				RunAsNonRoot: ptr.To(true),
+				RunAsNonRoot:       ptr.To(true),
+				// We still need the aodh group to access
+				// some of the files installed with the RPM
+				// that are owned by aodh:aodh. Security
+				// constraints don't seem to mind this.
+				SupplementalGroups: []int64{AodhUserID},
+				// Setting seccompprofile is required by
+				// some of the security constraints
+				SeccompProfile: &corev1.SeccompProfile{
+					Type: corev1.SeccompProfileTypeRuntimeDefault,
+				},
 			},
 		},
 	}

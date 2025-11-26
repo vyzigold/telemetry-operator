@@ -22,6 +22,7 @@ import (
 
 	topologyv1 "github.com/openstack-k8s-operators/infra-operator/apis/topology/v1beta1"
 	condition "github.com/openstack-k8s-operators/lib-common/modules/common/condition"
+	"github.com/openstack-k8s-operators/lib-common/modules/storage"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
 )
 
@@ -255,6 +256,27 @@ type TelemetryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Telemetry `json:"items"`
+}
+
+// TelemetryExtraVolMounts exposes additional parameters processed by the telemetry-operator
+// and defines the common VolMounts structure provided by the main storage module
+type TelemetryExtraVolMounts struct {
+	// +kubebuilder:validation:Optional
+	Name string `json:"name,omitempty"`
+	// +kubebuilder:validation:Optional
+	Region string `json:"region,omitempty"`
+	// +kubebuilder:validation:Required
+	VolMounts []storage.VolMounts `json:"extraVol"`
+}
+
+// Propagate is a function used to filter VolMounts according to the specified
+// PropagationType array
+func (t *TelemetryExtraVolMounts) Propagate(svc []storage.PropagationType) []storage.VolMounts {
+	var vl []storage.VolMounts
+	for _, tv := range t.VolMounts {
+		vl = append(vl, tv.Propagate(svc)...)
+	}
+	return vl
 }
 
 // IsReady - returns true if Telemetry is reconciled successfully

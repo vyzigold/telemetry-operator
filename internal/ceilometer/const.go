@@ -16,6 +16,11 @@ limitations under the License.
 // Package ceilometer provides functionality for managing OpenStack Ceilometer telemetry components
 package ceilometer
 
+import (
+	"github.com/openstack-k8s-operators/lib-common/modules/storage"
+	"github.com/openstack-k8s-operators/telemetry-operator/internal/telemetry"
+)
+
 const (
 	// ServiceName -
 	ServiceName = "ceilometer"
@@ -37,4 +42,13 @@ const (
 
 	// CeilometerUserID -
 	CeilometerUserID = 42405
+
+	// Ceilometer is the global ServiceType that refers to all the components deployed
+	// by the Ceilometer controller
+	Ceilometer storage.PropagationType = "Ceilometer"
 )
+
+// CeilometerPropagation is the definition of the Ceilometer propagation group
+// It allows the Ceilometer pod to mount volumes destined to Ceilometer related
+// ServiceTypes
+var CeilometerPropagation = []storage.PropagationType{telemetry.Telemetry, Ceilometer}

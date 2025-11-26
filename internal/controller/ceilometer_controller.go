@@ -1252,6 +1252,41 @@ func (r *CeilometerReconciler) generateServiceConfig(
 		templateParameters["SwiftRole"] = true
 	}
 
+	ceilometerConfigFiles := map[string]string{
+		// List of all files we don't want to expose for overwriting
+		"ceilometer-central-config.json":      "/ceilometercentral/config/ceilometer-central-config.json",
+		"ceilometer.conf":                     "/ceilometercentral/config/ceilometer.conf",
+		"ceilometer-notification-config.json": "/ceilometercentral/config/ceilometer-notification-config.json",
+		"httpd.conf":                          "/ceilometercentral/config/httpd.conf",
+		"pipeline.yaml":                       "/ceilometercentral/config/pipeline.yaml",
+		"sg-core.conf.yaml":                   "/ceilometercentral/config/sg-core.conf.yaml",
+		"ssl.conf":                            "/ceilometercentral/config/ssl.conf",
+	}
+
+	// Gather all extra vol types. The Propagate function gets rid of the types,
+	// but we don't actually need to use it for this purpose.
+	volTypes := []string{}
+	for _, exv := range instance.Spec.ExtraMounts {
+		for _, vol := range exv.VolMounts {
+			volTypes = append(volTypes, string(vol.ExtraVolType))
+		}
+	}
+
+	// Add config files, that don't occure in the extra volumes based
+	// on the volume types specified by the user. If a file is specified
+	// in the extra volumes, it's assumed it'll be mounted into the pod
+	// from the extra volumes and so we don't want to use the default
+	// file from templates/ we'd use otherwise.
+	if !slices.Contains(volTypes, "CeilometerPolling") {
+		ceilometerConfigFiles["polling.yaml"] = "/ceilometercentral/config/polling.yaml.j2"
+	}
+
+	/*
+		if !slices.Contains(volTypes, "CeilometerSomeOtherFile") {
+			ceilometerConfigFiles["some-other-file.json"] = "/ceilometercentral/config/some-other-file.json"
+		}
+	*/
+
 	cms := []util.Template{
 		// ScriptsSecrets
 		{
@@ -1268,13 +1303,15 @@ func (r *CeilometerReconciler) generateServiceConfig(
 		},
 		// Secrets
 		{
-			Name:          fmt.Sprintf("%s-config-data", ceilometer.ServiceName),
-			Namespace:     instance.Namespace,
-			Type:          util.TemplateTypeConfig,
-			InstanceType:  "ceilometercentral",
-			CustomData:    customData,
-			ConfigOptions: templateParameters,
-			Labels:        cmLabels,
+			Name:      fmt.Sprintf("%s-config-data", ceilometer.ServiceName),
+			Namespace: instance.Namespace,
+			Type:      util.TemplateTypeConfig,
+			// Disable the automatic file gathering for the test - ceilometercentrall doesn't exist
+			InstanceType:       "ceilometercentrall",
+			CustomData:         customData,
+			ConfigOptions:      templateParameters,
+			AdditionalTemplate: ceilometerConfigFiles,
+			Labels:             cmLabels,
 		},
 	}
 	return secret.EnsureSecrets(ctx, h, instance, cms, envVars)

@@ -11,7 +11,8 @@
         "source": "/var/lib/openstack/config/polling.yaml.j2",
         "dest": "/etc/ceilometer/polling.yaml",
         "owner": "ceilometer",
-        "perm": "0600"
+        "perm": "0600",
+        "optional": true
       },
       {
         "source": "/var/lib/openstack/config/custom.conf",

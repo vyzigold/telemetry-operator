@@ -155,6 +155,10 @@ type CeilometerSpecCore struct {
 	// TopologyRef to apply the Topology defined by the associated CR referenced
 	// by name
 	TopologyRef *topologyv1.TopoRef `json:"topologyRef,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// ExtraMounts containing conf files and credentials
+	ExtraMounts []TelemetryExtraVolMounts `json:"extraMounts,omitempty"`
 }
 
 // CeilometerStatus defines the observed state of Ceilometer

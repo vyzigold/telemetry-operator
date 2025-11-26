@@ -16,6 +16,8 @@ limitations under the License.
 package ceilometer
 
 import (
+	"github.com/openstack-k8s-operators/lib-common/modules/storage"
+	telemetryv1 "github.com/openstack-k8s-operators/telemetry-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -30,8 +32,8 @@ var (
 	scriptMode int32 = 0740
 )
 
-func getVolumes() []corev1.Volume {
-	return []corev1.Volume{
+func getVolumes(extraVol []telemetryv1.TelemetryExtraVolMounts, svc []storage.PropagationType) ([]corev1.Volume, error) {
+	volumes := []corev1.Volume{
 		{
 			Name: "scripts",
 			VolumeSource: corev1.VolumeSource{
@@ -74,11 +76,26 @@ func getVolumes() []corev1.Volume {
 			},
 		},
 	}
+	for _, exv := range extraVol {
+		for _, vol := range exv.Propagate(svc) {
+			for _, v := range vol.Volumes {
+				coreVolumeSource, err := v.ToCoreVolumeSource()
+				if err != nil {
+					return []corev1.Volume{}, err
+				}
+				volumes = append(volumes, corev1.Volume{
+					Name:         v.Name,
+					VolumeSource: *coreVolumeSource,
+				})
+			}
+		}
+	}
+	return volumes, nil
 }
 
 // getVolumeMounts - general VolumeMounts
-func getVolumeMounts(serviceName string) []corev1.VolumeMount {
-	return []corev1.VolumeMount{
+func getVolumeMounts(serviceName string, extraVol []telemetryv1.TelemetryExtraVolMounts, svc []storage.PropagationType) []corev1.VolumeMount {
+	volumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "scripts",
 			MountPath: "/var/lib/openstack/bin",
@@ -96,6 +113,13 @@ func getVolumeMounts(serviceName string) []corev1.VolumeMount {
 			ReadOnly:  true,
 		},
 	}
+
+	for _, exv := range extraVol {
+		for _, vol := range exv.Propagate(svc) {
+			volumeMounts = append(volumeMounts, vol.Mounts...)
+		}
+	}
+	return volumeMounts
 }
 
 // getSgCoreVolumeMounts - VolumeMounts for SGCore container

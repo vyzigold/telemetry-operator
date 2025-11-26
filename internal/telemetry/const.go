@@ -16,6 +16,10 @@ limitations under the License.
 // Package telemetry provides constants and utilities for OpenStack telemetry service management
 package telemetry
 
+import (
+	"github.com/openstack-k8s-operators/lib-common/modules/storage"
+)
+
 const (
 	// ServiceName -
 	ServiceName = "telemetry"
@@ -23,4 +27,9 @@ const (
 	ServiceType = "telemetry"
 	// DpdkServiceName -
 	DpdkServiceName = "configure-ovs-dpdk"
+	// Telemetry is the global ServiceType that refers to all the components deployed
+	// by the telemetry operator
+	Telemetry storage.PropagationType = "Telemetry"
 )
+
+var TelemetryVolumePropagation = []storage.PropagationType{Telemetry}

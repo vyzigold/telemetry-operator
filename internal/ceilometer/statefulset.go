@@ -97,18 +97,21 @@ func StatefulSet(
 	args = append(args, ServiceCommand)
 
 	envVarsCentral := map[string]env.Setter{}
-	envVarsCentral["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
+	envVarsCentral["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ONCE")
 	envVarsCentral["CONFIG_HASH"] = env.SetValue(configHash)
 
 	envVarsNotification := map[string]env.Setter{}
-	envVarsNotification["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
+	envVarsNotification["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ONCE")
 	envVarsNotification["CONFIG_HASH"] = env.SetValue(configHash)
 
 	var replicas int32 = 1
 
-	volumes := getVolumes()
-	centralVolumeMounts := getVolumeMounts("ceilometer-central")
-	notificationVolumeMounts := getVolumeMounts("ceilometer-notification")
+	volumes, err := getVolumes(instance.Spec.ExtraMounts, CeilometerPropagation)
+	if err != nil {
+		return nil, err
+	}
+	centralVolumeMounts := getVolumeMounts("ceilometer-central", instance.Spec.ExtraMounts, CeilometerPropagation)
+	notificationVolumeMounts := getVolumeMounts("ceilometer-notification", instance.Spec.ExtraMounts, CeilometerPropagation)
 	httpdVolumeMounts := getHttpdVolumeMounts()
 
 	if instance.Spec.TLS.Enabled() {

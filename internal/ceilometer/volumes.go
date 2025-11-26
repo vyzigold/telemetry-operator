@@ -16,6 +16,7 @@ limitations under the License.
 package ceilometer
 
 import (
+	telemetryv1 "github.com/openstack-k8s-operators/telemetry-operator/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -30,8 +31,29 @@ var (
 	scriptMode int32 = 0740
 )
 
-func getVolumes() []corev1.Volume {
-	return []corev1.Volume{
+func getCustomConfigsVolumes(instance *telemetryv1.Ceilometer) []corev1.Volume {
+	vols := []corev1.Volume{}
+	if instance.Spec.CustomPollingConfigSecret != nil {
+		vols = append(vols, corev1.Volume{
+			Name: "custom-polling-config",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					DefaultMode: &configMode,
+					Items: []corev1.KeyToPath{{
+						Key:  instance.Spec.CustomPollingConfigSecret.Key,
+						Path: instance.Spec.CustomPollingConfigSecret.Key,
+					}},
+					SecretName: instance.Spec.CustomPollingConfigSecret.Name,
+				},
+			},
+		})
+	}
+	return vols
+}
+
+func getVolumes(instance *telemetryv1.Ceilometer) []corev1.Volume {
+	vols := getCustomConfigsVolumes(instance)
+	return append(vols, []corev1.Volume{
 		{
 			Name: "scripts",
 			VolumeSource: corev1.VolumeSource{
@@ -73,12 +95,25 @@ func getVolumes() []corev1.Volume {
 				EmptyDir: &corev1.EmptyDirVolumeSource{Medium: ""},
 			},
 		},
+	}...)
+}
+
+func getCustomConfigVolumeMounts(instance *telemetryv1.Ceilometer) []corev1.VolumeMount {
+	volMounts := []corev1.VolumeMount{}
+	if instance.Spec.CustomPollingConfigSecret != nil {
+		volMounts = append(volMounts, corev1.VolumeMount{
+			Name:      "custom-polling-config",
+			MountPath: "/var/lib/openstack/custom-config/custom-polling.yaml",
+			SubPath:   instance.Spec.CustomPollingConfigSecret.Key,
+			ReadOnly:  true,
+		})
 	}
+	return volMounts
 }
 
 // getVolumeMounts - general VolumeMounts
-func getVolumeMounts(serviceName string) []corev1.VolumeMount {
-	return []corev1.VolumeMount{
+func getVolumeMounts(instance *telemetryv1.Ceilometer, serviceName string) []corev1.VolumeMount {
+	return append(getCustomConfigVolumeMounts(instance), []corev1.VolumeMount{
 		{
 			Name:      "scripts",
 			MountPath: "/var/lib/openstack/bin",
@@ -95,7 +130,7 @@ func getVolumeMounts(serviceName string) []corev1.VolumeMount {
 			SubPath:   serviceName + "-config.json",
 			ReadOnly:  true,
 		},
-	}
+	}...)
 }
 
 // getSgCoreVolumeMounts - VolumeMounts for SGCore container

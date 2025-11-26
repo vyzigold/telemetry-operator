@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/tls"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/util"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -155,6 +156,11 @@ type CeilometerSpecCore struct {
 	// TopologyRef to apply the Topology defined by the associated CR referenced
 	// by name
 	TopologyRef *topologyv1.TopoRef `json:"topologyRef,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// A secret used to replace the default ceilometer polling.yaml with
+	// a custom file.
+	CustomPollingConfigSecret *corev1.SecretKeySelector `json:"customPollingConfigSecret,omitempty"`
 }
 
 // CeilometerStatus defines the observed state of Ceilometer

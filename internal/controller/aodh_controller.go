@@ -581,6 +581,9 @@ func (r *AutoscalingReconciler) reconcileNormalAodh(
 		configVars[tls.TLSHashName] = env.SetValue(certsHash)
 	}
 
+	// all cert input checks out so report InputReady
+	instance.Status.Conditions.MarkTrue(condition.TLSInputReadyCondition, condition.InputReadyMessage)
+
 	// remove finalizers from unused MariaDBAccount records
 	err = mariadbv1.DeleteUnusedMariaDBAccountFinalizers(
 		ctx, helper, autoscaling.DatabaseCRName,
@@ -589,8 +592,18 @@ func (r *AutoscalingReconciler) reconcileNormalAodh(
 		return ctrl.Result{}, err
 	}
 
-	// all cert input checks out so report InputReady
-	instance.Status.Conditions.MarkTrue(condition.TLSInputReadyCondition, condition.InputReadyMessage)
+	//
+	// check for custom configs secret holding custom configuration files
+	//
+	if instance.Spec.Aodh.CustomConfigsSecretName != "" {
+		_, hash, err := secret.GetSecret(ctx, helper, instance.Spec.Aodh.CustomConfigsSecretName, instance.Namespace)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		configVars["custom-configs-secret"] = env.SetValue(hash)
+	}
+	// run check custom configs secret - end
+
 
 	Log.Info("Reconciled Service Aodh successfully")
 	return ctrl.Result{}, nil

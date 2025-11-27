@@ -221,12 +221,13 @@ func (r *AutoscalingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // fields to index to reconcile when change
 const (
-	autoscalingPasswordSecretField     = ".spec.secret"
-	autoscalingCaBundleSecretNameField = ".spec.tls.caBundleSecretName" //nolint:gosec // G101: Not actual credentials, just field path
-	autoscalingTLSAPIInternalField     = ".spec.tls.api.internal.secretName"
-	autoscalingTLSAPIPublicField       = ".spec.tls.api.public.secretName"
-	autoscalingTLSField                = ".spec.tls.secretName"
-	topologyField                      = ".spec.topologyRef.Name"
+	autoscalingPasswordSecretField      = ".spec.secret"
+	autoscalingCaBundleSecretNameField  = ".spec.tls.caBundleSecretName" //nolint:gosec // G101: Not actual credentials, just field path
+	autoscalingTLSAPIInternalField      = ".spec.tls.api.internal.secretName"
+	autoscalingTLSAPIPublicField        = ".spec.tls.api.public.secretName"
+	autoscalingTLSField                 = ".spec.tls.secretName"
+	topologyField                       = ".spec.topologyRef.Name"
+	autoscalingCustomConfigsSecretField = ".spec.aodh.customConfigsSecretName"
 )
 
 var (
@@ -237,6 +238,7 @@ var (
 		autoscalingTLSAPIPublicField,
 		autoscalingTLSField,
 		topologyField,
+		autoscalingCustomConfigsSecretField,
 	}
 )
 
@@ -930,6 +932,18 @@ func (r *AutoscalingReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 			return nil
 		}
 		return []string{cr.Spec.Aodh.TopologyRef.Name}
+	}); err != nil {
+		return err
+	}
+
+	// index autoscalingCustomConfigsSecretField
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &telemetryv1.Autoscaling{}, autoscalingCustomConfigsSecretField, func(rawObj client.Object) []string {
+		// Extract the secret name from the spec, if one is provided
+		cr := rawObj.(*telemetryv1.Autoscaling)
+		if cr.Spec.Aodh.CustomConfigsSecretName == "" {
+			return nil
+		}
+		return []string{cr.Spec.Aodh.CustomConfigsSecretName}
 	}); err != nil {
 		return err
 	}

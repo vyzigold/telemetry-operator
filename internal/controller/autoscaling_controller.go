@@ -221,12 +221,11 @@ func (r *AutoscalingReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // fields to index to reconcile when change
 const (
-	autoscalingPasswordSecretField      = ".spec.secret"
-	autoscalingCaBundleSecretNameField  = ".spec.tls.caBundleSecretName" //nolint:gosec // G101: Not actual credentials, just field path
-	autoscalingTLSAPIInternalField      = ".spec.tls.api.internal.secretName"
-	autoscalingTLSAPIPublicField        = ".spec.tls.api.public.secretName"
-	autoscalingTLSField                 = ".spec.tls.secretName"
-	topologyField                       = ".spec.topologyRef.Name"
+	autoscalingPasswordSecretField      = ".spec.aodh.secret"
+	autoscalingCaBundleSecretNameField  = ".spec.aodh.tls.caBundleSecretName" //nolint:gosec // G101: Not actual credentials, just field path
+	autoscalingTLSAPIInternalField      = ".spec.aodh.tls.api.internal.secretName"
+	autoscalingTLSAPIPublicField        = ".spec.aodh.tls.api.public.secretName"
+	topologyField                       = ".spec.aodh.topologyRef.Name"
 	autoscalingCustomConfigsSecretField = ".spec.aodh.customConfigsSecretName"
 )
 
@@ -236,7 +235,6 @@ var (
 		autoscalingCaBundleSecretNameField,
 		autoscalingTLSAPIInternalField,
 		autoscalingTLSAPIPublicField,
-		autoscalingTLSField,
 		topologyField,
 		autoscalingCustomConfigsSecretField,
 	}
@@ -540,7 +538,86 @@ func (r *AutoscalingReconciler) reconcileNormal(
 		return ctrl.Result{}, err
 	}
 
+	//
+	// TLS input validation
+	//
+	// Validate the CA cert secret if provided
+	if instance.Spec.Aodh.TLS.CaBundleSecretName != "" {
+		hash, err := tls.ValidateCACertSecret(
+			ctx,
+			helper.GetClient(),
+			types.NamespacedName{
+				Name:      instance.Spec.Aodh.TLS.CaBundleSecretName,
+				Namespace: instance.Namespace,
+			},
+		)
+		if err != nil {
+			if k8s_errors.IsNotFound(err) {
+				// Since the CA cert secret should have been manually created by the user and provided in the spec,
+				// we treat this as a warning because it means that the service will not be able to start.
+				instance.Status.Conditions.Set(condition.FalseCondition(
+					condition.TLSInputReadyCondition,
+					condition.ErrorReason,
+					condition.SeverityWarning,
+					condition.TLSInputReadyWaitingMessage, instance.Spec.Aodh.TLS.CaBundleSecretName))
+				return ctrl.Result{}, nil
+			}
+			instance.Status.Conditions.Set(condition.FalseCondition(
+				condition.TLSInputReadyCondition,
+				condition.ErrorReason,
+				condition.SeverityWarning,
+				condition.TLSInputErrorMessage,
+				err.Error()))
+			return ctrl.Result{}, err
+		}
+
+		if hash != "" {
+			configMapVars[tls.CABundleKey] = env.SetValue(hash)
+		}
+		// Validate API service certs secrets
+		certsHash, err := instance.Spec.Aodh.TLS.API.ValidateCertSecrets(ctx, helper, instance.Namespace)
+		if err != nil {
+			if k8s_errors.IsNotFound(err) {
+				instance.Status.Conditions.Set(condition.FalseCondition(
+					condition.TLSInputReadyCondition,
+					condition.RequestedReason,
+					condition.SeverityInfo,
+					condition.TLSInputReadyWaitingMessage, err.Error()))
+				return ctrl.Result{}, nil
+			}
+			instance.Status.Conditions.Set(condition.FalseCondition(
+				condition.TLSInputReadyCondition,
+				condition.ErrorReason,
+				condition.SeverityWarning,
+				condition.TLSInputErrorMessage,
+				err.Error()))
+			return ctrl.Result{}, err
+		}
+
+		configMapVars[tls.TLSHashName] = env.SetValue(certsHash)
+	}
+
+	// all cert input checks out so report InputReady
+	instance.Status.Conditions.MarkTrue(condition.TLSInputReadyCondition, condition.InputReadyMessage)
+
+	//
+	// check for custom configs secret holding custom configuration files
+	//
+	Log.Info("...........BEGINING............")
+	if instance.Spec.Aodh.CustomConfigsSecretName != "" {
+		_, hash, err := secret.GetSecret(ctx, helper, instance.Spec.Aodh.CustomConfigsSecretName, instance.Namespace)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		configMapVars["custom-configs-secret"] = env.SetValue(hash)
+		Log.Info(fmt.Sprintf("HASH: %s", hash))
+	}
+	// run check custom configs secret - end
+
 	inputHash, hashChanged, err := r.createHashOfInputHashes(ctx, instance, configMapVars)
+	Log.Info(fmt.Sprintf("FINAL_HASH: %s", inputHash))
+	Log.Info(fmt.Sprintf("CHANGED: %t", hashChanged))
+	Log.Info("...........END............")
 	if err != nil {
 		instance.Status.Conditions.Set(condition.FalseCondition(
 			condition.ServiceConfigReadyCondition,
@@ -888,6 +965,19 @@ func (r *AutoscalingReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 		}
 		return nil
 	}
+
+	// index autoscalingPasswordSecretField
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &telemetryv1.Autoscaling{}, autoscalingPasswordSecretField, func(rawObj client.Object) []string {
+		// Extract the secret name from the spec, if one is provided
+		cr := rawObj.(*telemetryv1.Autoscaling)
+		if cr.Spec.Aodh.Secret == "" {
+			return nil
+		}
+		return []string{cr.Spec.Aodh.Secret}
+	}); err != nil {
+		return err
+	}
+
 	// index autoscalingCaBundleSecretNameField
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &telemetryv1.Autoscaling{}, autoscalingCaBundleSecretNameField, func(rawObj client.Object) []string {
 		// Extract the secret name from the spec, if one is provided
@@ -986,6 +1076,7 @@ func (r *AutoscalingReconciler) findObjectsForSrc(ctx context.Context, src clien
 	requests := []reconcile.Request{}
 
 	Log := r.GetLogger(ctx)
+	Log.Info("Function Called")
 
 	for _, field := range autoscalingAllWatchFields {
 		crList := &telemetryv1.AutoscalingList{}
@@ -995,8 +1086,11 @@ func (r *AutoscalingReconciler) findObjectsForSrc(ctx context.Context, src clien
 		}
 		err := r.List(ctx, crList, listOps)
 		if err != nil {
+			Log.Info("Can't list")
+			Log.Info(err.Error())
 			return []reconcile.Request{}
 		}
+		Log.Info(fmt.Sprintf("%d", len(crList.Items)))
 
 		for _, item := range crList.Items {
 			Log.Info(fmt.Sprintf("input source %s changed, reconcile: %s - %s", src.GetName(), item.GetName(), item.GetNamespace()))

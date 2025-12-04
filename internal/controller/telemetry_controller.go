@@ -275,6 +275,14 @@ func (r TelemetryReconciler) reconcileCeilometer(ctx context.Context, instance *
 		instance.Spec.Ceilometer.TopologyRef = instance.Spec.TopologyRef
 	}
 
+	if instance.Spec.Ceilometer.MysqldExporterTopologyRef == nil {
+		instance.Spec.Ceilometer.MysqldExporterTopologyRef = instance.Spec.TopologyRef
+	}
+
+	if instance.Spec.Ceilometer.KSMTopologyRef == nil {
+		instance.Spec.Ceilometer.KSMTopologyRef = instance.Spec.TopologyRef
+	}
+
 	helper.GetLogger().Info("Reconciling Ceilometer", ceilometerNamespaceLabel, instance.Namespace, ceilometerNameLabel, ceilometer.ServiceName)
 	op, err := controllerutil.CreateOrPatch(ctx, helper.GetClient(), ceilometerInstance, func() error {
 		instance.Spec.Ceilometer.CeilometerSpec.DeepCopyInto(&ceilometerInstance.Spec)

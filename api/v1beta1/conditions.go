@@ -86,6 +86,10 @@ const (
 	// KSMCreateServiceReadyCondition Status=True condition when k8s service for the KSM created ok
 	KSMCreateServiceReadyCondition condition.Type = "KSMCreateServiceReady"
 
+	// KSMTopologyReadyCondition Status=True condition that indicates a CR
+	// exists and is referenced by the Service
+	KSMTopologyReadyCondition condition.Type = "KSMTopologyReady"
+
 	// MysqldExporter conditions
 	MysqldExporterDBReadyCondition condition.Type = "MysqldExporterDBReady"
 
@@ -96,6 +100,10 @@ const (
 	MysqldExporterServiceConfigReadyCondition condition.Type = "MysqldExporterServiceConfigReady"
 
 	MysqldExporterTLSInputReadyCondition condition.Type = "MysqldExporterTLSInputReady"
+
+	// MysqldExporterTopologyReadyCondition Status=True condition that indicates a CR
+	// exists and is referenced by the Service
+	MysqldExporterTopologyReadyCondition condition.Type = "MysqldExporterTopologyReady"
 )
 
 // Telemetry Reasons used by API objects.

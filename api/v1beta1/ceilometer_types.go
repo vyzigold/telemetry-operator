@@ -153,8 +153,18 @@ type CeilometerSpecCore struct {
 
 	// +kubebuilder:validation:Optional
 	// TopologyRef to apply the Topology defined by the associated CR referenced
-	// by name
+	// by name for Ceilometer
 	TopologyRef *topologyv1.TopoRef `json:"topologyRef,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// TopologyRef to apply the Topology defined by the associated CR referenced
+	// by name for mysqld-exporter
+	MysqldExporterTopologyRef *topologyv1.TopoRef `json:"mysqldExporterTopologyRef,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// TopologyRef to apply the Topology defined by the associated CR referenced
+	// by name for kube-state-metrics
+	KSMTopologyRef *topologyv1.TopoRef `json:"ksmTopologyRef,omitempty"`
 }
 
 // CeilometerStatus defines the observed state of Ceilometer
@@ -198,6 +208,12 @@ type CeilometerStatus struct {
 
 	// LastAppliedTopology - the last applied Topology
 	LastAppliedTopology *topologyv1.TopoRef `json:"lastAppliedTopology,omitempty"`
+
+	// KSMLastAppliedTopology - the last applied Topology
+	KSMLastAppliedTopology *topologyv1.TopoRef `json:"ksmLastAppliedTopology,omitempty"`
+
+	// MysqldExporterLastAppliedTopology - the last applied Topology
+	MysqldExporterLastAppliedTopology *topologyv1.TopoRef `json:"mysqldExporterLastAppliedTopology,omitempty"`
 }
 
 // NOTE(mmagr): remove KSMStatus with API version increment

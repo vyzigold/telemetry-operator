@@ -66,6 +66,8 @@ func (spec *CloudKittySpec) Default() {
 	}
 
 	spec.CloudKittySpecBase.Default()
+	spec.CloudKittyAPI.Default()
+	spec.CloudKittyProc.Default()
 }
 
 // Default - note only *Template* versions like this will have validations that are called from the
@@ -73,19 +75,123 @@ func (spec *CloudKittySpec) Default() {
 func (spec *CloudKittyTemplate) Default() {
 	// NOTE: ApplicationCredentialSecret is NOT defaulted here.
 	// AppCred is opt-in: only used when explicitly configured by the user.
+
+	if spec.ServiceUser == "" {
+		spec.ServiceUser = "cloudkitty"
+	}
+
+	if spec.DatabaseAccount == "" {
+		spec.DatabaseAccount = "cloudkitty"
+	}
+
+	if spec.Secret == "" {
+		spec.Secret = "osp-secret"
+	}
+
+	spec.PasswordSelectors.Default()
 }
 
 // Default - set defaults for this CloudKittySpecCore. NOTE: this version is used by the OpenStackControlplane webhook
 func (spec *CloudKittySpecCore) Default() {
 	spec.CloudKittySpecBase.Default()
+	spec.CloudKittyAPI.Default()
+	spec.CloudKittyProc.Default()
 }
 
 // Default - set defaults for this CloudKittySpecBase
 func (spec *CloudKittySpecBase) Default() {
+	if spec.DatabaseInstance == "" {
+		spec.DatabaseInstance = "openstack"
+	}
+
 	// Default MessagingBus.Cluster if not set
 	// Migration from deprecated fields is handled by openstack-operator
 	if spec.MessagingBus.Cluster == "" {
 		spec.MessagingBus.Cluster = "rabbitmq"
+	}
+
+	if spec.MemcachedInstance == "" {
+		spec.MemcachedInstance = "memcached"
+	}
+
+	// PreserveJobs defaults to false (zero value), no need to set explicitly
+
+	if spec.APITimeout == 0 {
+		spec.APITimeout = 60
+	}
+
+	if spec.Period == 0 {
+		spec.Period = 300
+	}
+
+	spec.S3StorageConfig.Default()
+
+	if spec.LokiStackSize == "" {
+		spec.LokiStackSize = "1x.demo"
+	}
+
+	if spec.LokiRetentionDays == 0 {
+		spec.LokiRetentionDays = 95
+	}
+
+	spec.CloudKittyTemplate.Default()
+}
+
+// Default - set defaults for PasswordsSelector
+func (ps *PasswordsSelector) Default() {
+	if ps.CloudKittyService == "" {
+		ps.CloudKittyService = "CloudKittyPassword"
+	}
+}
+
+// Default - set defaults for ObjectStorageSpec
+func (spec *ObjectStorageSpec) Default() {
+	if len(spec.Schemas) == 0 {
+		spec.Schemas = []ObjectStorageSchema{
+			{
+				Version:       "v11",
+				EffectiveDate: "2020-10-11",
+			},
+		}
+	}
+
+	spec.Secret.Default()
+}
+
+// Default - set defaults for ObjectStorageSecretSpec
+func (spec *ObjectStorageSecretSpec) Default() {
+	if spec.Name == "" {
+		spec.Name = "cloudkitty-loki-s3"
+	}
+
+	if spec.Type == "" {
+		spec.Type = "s3"
+	}
+}
+
+// Default - set defaults for CloudKittyAPITemplate
+func (spec *CloudKittyAPITemplate) Default() {
+	spec.CloudKittyAPITemplateCore.Default()
+}
+
+// Default - set defaults for CloudKittyAPITemplateCore
+func (spec *CloudKittyAPITemplateCore) Default() {
+	if spec.Replicas == nil {
+		replicas := int32(1)
+		spec.Replicas = &replicas
+	}
+}
+
+// Default - set defaults for CloudKittyProcTemplate
+func (spec *CloudKittyProcTemplate) Default() {
+	spec.CloudKittyProcTemplateCore.Default()
+}
+
+// Default - set defaults for CloudKittyProcTemplateCore
+func (spec *CloudKittyProcTemplateCore) Default() {
+	if spec.Replicas == nil {
+		replicas := int32(1)
+		spec.Replicas = &replicas
 	}
 }
 
